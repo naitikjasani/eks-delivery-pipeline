@@ -1,0 +1,25 @@
+# service.yaml: a stable internal address for the hello-app pods.
+#
+# Pods come and go (and change IP) during every rollout. The Service gives them one fixed name,
+# http://hello-app (inside namespace "app"), and spreads requests across whichever pods are Ready.
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-app
+  namespace: app
+  labels:
+    # The ServiceMonitor (monitoring/servicemonitor.yaml) finds this Service by this label.
+    app: hello-app
+spec:
+  # ClusterIP = reachable only from inside the cluster. It costs nothing, unlike type LoadBalancer
+  # (which creates a paid AWS load balancer). We reach it from the Mac with `kubectl port-forward`.
+  type: ClusterIP
+  # Send traffic to pods with this label (the pods created by the Deployment).
+  selector:
+    app: hello-app
+  ports:
+    # Named "http" so the ServiceMonitor can refer to it by name.
+    - name: http
+      # Callers use port 80 (http://hello-app); it's forwarded to the container port named "http" (3000).
+      port: 80
+      targetPort: http

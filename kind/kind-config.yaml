@@ -1,0 +1,9 @@
+# kind-config.yaml: a free local Kubernetes cluster ("Kubernetes IN Docker") for practice.
+# Each "node" is a Docker container on your Mac. Created by scripts/kind-up.sh as cluster "devops-lab".
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  # Runs the Kubernetes "brain" (API server, scheduler, etcd). On EKS, AWS runs this part for you.
+  - role: control-plane
+  # Runs our pods, like an EKS worker node. Having a separate worker makes the setup look like a real cluster.
+  - role: worker

@@ -1,0 +1,115 @@
+# deployment.yaml: tells Kubernetes "keep 2 copies of hello-app running, and update them safely".
+#
+# The image is the literal text IMAGE_PLACEHOLDER. At deploy time it's replaced with `sed`:
+#   - Jenkins:                 <ECR_REPO_URL>:<git-sha>
+#   - scripts/kind-deploy.sh:  hello-app:local
+# That way one file works for both kind and EKS, with no templating tool needed.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-app
+  # The namespace is created once by an admin (kubectl create namespace app), not here. Jenkins is
+  # deliberately not allowed to create cluster-wide objects such as namespaces (least privilege).
+  namespace: app
+  labels:
+    app: hello-app
+spec:
+  # Two pods, so one can be replaced (or its node can disappear, e.g. Spot reclaim) while the other serves traffic.
+  replicas: 2
+  # Keep the last 5 old ReplicaSets so `kubectl rollout undo` has versions to go back to.
+  revisionHistoryLimit: 5
+  # A new pod must stay Ready for 5 s before it counts as "available". This catches pods that pass
+  # the first probe and then crash straight away.
+  minReadySeconds: 5
+  # Links this Deployment to its pods. Must match the pod template labels below.
+  selector:
+    matchLabels:
+      app: hello-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Allow 1 extra pod during an update (3 total for a short time)...
+      maxSurge: 1
+      # ...and never go below 2 Ready pods. An old pod is removed only after a new one is Ready.
+      # This is what makes deploys zero-downtime, and why a broken release (Demo 3) never takes the app down.
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: hello-app
+    spec:
+      # Kubernetes waits up to 30 s after SIGTERM before force-killing (SIGKILL) the container.
+      # Our preStop sleep (5 s) plus the app's own shutdown (at most 10 s) fit comfortably inside it.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        # Refuse to start the container if the image would run as root.
+        runAsNonRoot: true
+        # uid 1000 is the "node" user built into the node:24-alpine image (USER node in the Dockerfile).
+        runAsUser: 1000
+        # Apply the container runtime's default seccomp filter, which blocks dangerous Linux system calls.
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: hello-app
+          # Replaced at deploy time (see the comment at the top of this file).
+          image: IMAGE_PLACEHOLDER
+          # Pull only if the node doesn't already have this tag. Our tags are unique git SHAs (immutable),
+          # so a cached copy is always the right image. On kind this also lets us use an image loaded with
+          # `kind load` instead of pulling it from a registry.
+          imagePullPolicy: IfNotPresent
+          ports:
+            # A named port lets the probes, the Service and the ServiceMonitor say "http" instead of repeating 3000.
+            - name: http
+              containerPort: 3000
+          env:
+            # Shown by GET /. Different from the app's default, so you can tell it's running in Kubernetes.
+            - name: GREETING
+              value: "Hello from Kubernetes"
+            # The "Downward API": Kubernetes injects this pod's own name, so each response shows which pod answered.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          # Readiness: "should this pod get traffic?" Checked every 5 s; after 2 failures (~10 s) the pod is
+          # taken out of the Service. During shutdown the app returns 503 here on purpose.
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+            failureThreshold: 2
+          # Liveness: "is the process stuck?" After 3 failures in a row (~30 s) the container is restarted.
+          # The 10 s initial delay gives the app time to start. Liveness and readiness are kept separate, because
+          # a pod that's merely busy or draining must not be killed (that causes restart storms).
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            # Requests: what the scheduler reserves on a node. Small, so everything fits on 2 small Spot nodes.
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            # Limits: the hard ceiling. Above 128Mi the container is OOM-killed instead of starving its neighbours.
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            # The process can never gain more privileges than it started with (e.g. through setuid binaries).
+            allowPrivilegeEscalation: false
+            # The container can't write to its own filesystem, so an attacker can't drop files into it.
+            # Our app writes only to stdout, so it doesn't need a writable filesystem.
+            readOnlyRootFilesystem: true
+            # Drop every Linux capability. A web server on port 3000 needs none of them.
+            capabilities:
+              drop: ["ALL"]
+          lifecycle:
+            preStop:
+              exec:
+                # Removing a pod from the Service's endpoints takes a moment to reach every node.
+                # Sleeping 5 s BEFORE SIGTERM keeps the pod serving while routing catches up, so no request
+                # is sent to a pod that has already stopped. (`sleep` exists in the Alpine image.)
+                command: ["sleep", "5"]
