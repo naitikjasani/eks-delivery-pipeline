@@ -1,0 +1,33 @@
+# --- Terraform ---
+# Local working files and provider binaries. Never commit.
+.terraform/
+# State files can contain secrets (e.g. the Jenkins access key). Never commit.
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+# Your real variable values and backend settings. Commit only the *.example files.
+*.tfvars
+!*.tfvars.example
+backend.hcl
+!backend.hcl.example
+# NOTE: .terraform.lock.hcl IS committed on purpose (pins provider versions).
+
+# --- Node ---
+node_modules/
+npm-debug.log*
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+# Holds the real Slack webhook URL. Commit only the .example file.
+monitoring/alertmanager-slack.values.yaml
+# Kubeconfig copies
+kubeconfig
+*.kubeconfig
+
+# --- OS / editor ---
+.DS_Store
+.idea/
+.vscode/
