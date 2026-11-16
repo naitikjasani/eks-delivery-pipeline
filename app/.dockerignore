@@ -1,0 +1,11 @@
+# .dockerignore: files Docker must NOT send into the build ("build context").
+# A smaller context means faster builds, and the image never contains your local junk.
+
+# Installed inside the image with `npm ci`. Copying the Mac's copy could bring in wrong-platform binaries.
+node_modules
+npm-debug.log
+# Git history isn't needed in the image (and can be large).
+.git
+# Docs aren't needed to run or test the app.
+*.md
+# NOTE: "test" is deliberately NOT ignored. The test stage (`docker build --target test`) needs it.
