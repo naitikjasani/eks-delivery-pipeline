@@ -10,7 +10,7 @@ KIND_CONTEXT  := kind-devops-lab
 MODE          ?= normal
 
 # These targets are commands, not files. .PHONY stops make from skipping them if a file with the same name exists.
-.PHONY: help test lint tf-validate kind-up deploy monitoring traffic down
+.PHONY: help test lint tf-validate kind-up deploy monitoring traffic demo down
 
 help: ## List the available commands
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-12s %s\n", $$1, $$2}'
@@ -48,6 +48,9 @@ monitoring: ## Install Prometheus, Grafana and Alertmanager on kind, plus our al
 
 traffic: ## Send traffic from inside the cluster until Ctrl-C (MODE=normal|errors|slow)
 	./scripts/traffic.sh $(MODE)
+
+demo: ## Guided live demo: app, zero-downtime rollout, broken release + rollback, alert (ACT=all|app|rollout|rollback|alert)
+	./scripts/demo.sh $(or $(ACT),all)
 
 down: ## Delete the local kind cluster
 	./scripts/kind-down.sh
