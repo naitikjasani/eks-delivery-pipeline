@@ -1,0 +1,25 @@
+# servicemonitor.yaml: tells Prometheus "scrape the pods behind the hello-app Service".
+#
+# ServiceMonitor is a custom resource added by the Prometheus Operator (part of kube-prometheus-stack).
+# The operator turns it into Prometheus scrape config for us, so when pods come and go during a rollout,
+# Prometheus discovers the new ones automatically, with no manual list of IPs.
+# Install monitoring first, because this object type only exists once the chart is installed.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hello-app
+  # Lives next to the app. Prometheus reads ServiceMonitors from all namespaces
+  # (serviceMonitorSelectorNilUsesHelmValues: false in values.yaml).
+  namespace: app
+  labels:
+    app: hello-app
+spec:
+  # Find Services in this ServiceMonitor's namespace ("app") that carry this label (see k8s/service.yaml).
+  selector:
+    matchLabels:
+      app: hello-app
+  endpoints:
+    # "http" is the NAME of the Service port, so it keeps working if the port number ever changes.
+    - port: http
+      path: /metrics
+      interval: 15s

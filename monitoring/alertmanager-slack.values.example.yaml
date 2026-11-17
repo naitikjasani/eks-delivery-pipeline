@@ -1,0 +1,44 @@
+# alertmanager-slack.values.example.yaml: TEMPLATE for sending alerts to Slack.
+#
+# How to use it:
+#   cp monitoring/alertmanager-slack.values.example.yaml monitoring/alertmanager-slack.values.yaml
+#   then paste your real Slack webhook URL into the copy.
+# The copy is listed in .gitignore, so the webhook URL never reaches GitHub.
+# Anyone who has the URL can post into your Slack channel, so treat it like a password.
+alertmanager:
+  config:
+    global:
+      # If an alert stops being reported, it's marked resolved after 5 minutes.
+      resolve_timeout: 5m
+    route:
+      # Default destination for every alert not matched by a sub-route below.
+      receiver: slack
+      # Alerts with the same name and namespace are bundled into ONE Slack message instead of many.
+      group_by: [alertname, namespace]
+      # Wait 30 s before the first message, so related alerts that fire together arrive together.
+      group_wait: 30s
+      # After the first message, wait 2 min before sending updates about the same group.
+      group_interval: 2m
+      # If an alert is still firing, remind the channel once an hour (not every minute).
+      repeat_interval: 1h
+      routes:
+        - receiver: "null"                # Watchdog fires forever by design (dead-man switch); don't spam Slack
+          matchers: [ 'alertname = "Watchdog"' ]
+        # InfoInhibitor exists only to silence low-severity "info" alerts; it isn't meant for humans.
+        - receiver: "null"
+          matchers: [ 'alertname = "InfoInhibitor"' ]
+    receivers:
+      # A receiver with no destination: alerts routed here are simply dropped.
+      - name: "null"
+      - name: slack
+        slack_configs:
+          - api_url: "https://hooks.slack.com/services/REPLACE/ME/PLEASE"
+            channel: "#alerts"
+            # Also post a message when the problem is over ([RESOLVED]).
+            send_resolved: true
+            # Go templates fill in the alert details, e.g. "[FIRING] HelloAppHighErrorRate".
+            title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
+            text: >-
+              {{ range .Alerts }}*{{ .Annotations.summary }}*
+              {{ .Annotations.description }}
+              {{ end }}

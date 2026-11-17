@@ -1,0 +1,64 @@
+# values.yaml: our settings for the kube-prometheus-stack Helm chart, shared by kind and EKS.
+#
+# That one chart installs the whole monitoring stack:
+#   Prometheus (collects and stores metrics) → Alertmanager (routes alerts, e.g. to Slack)
+#   Grafana (dashboards), kube-state-metrics (Kubernetes object metrics), node-exporter (machine metrics),
+#   and the Prometheus Operator, which understands ServiceMonitor and PrometheusRule objects.
+# Anything not set here keeps the chart's default.
+
+# Things EKS manages for us and hides. Scraping them only produces false "target down" alerts.
+# (The control plane runs on AWS's side, so Prometheus can't reach these components.)
+kubeControllerManager: { enabled: false }
+kubeScheduler:         { enabled: false }
+kubeEtcd:              { enabled: false }
+kubeProxy:             { enabled: false }
+# Turn off the built-in alert/recording rules for those same hidden components, for the same reason.
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeProxy: false
+
+prometheus:
+  prometheusSpec:
+    retention: 6h                         # demo only; keeps memory low
+    # How often Prometheus scrapes every target. 15 s is a common default and is fine-grained enough for demos.
+    scrapeInterval: 15s
+    # Pick up ServiceMonitors/rules from ANY namespace without needing the Helm release label:
+    # (by default Prometheus only reads objects labelled release=monitoring; ours live in plain YAML files)
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    # Requests = what the scheduler reserves; the memory limit stops Prometheus from starving the nodes.
+    # No CPU limit on purpose: CPU limits throttle bursty work (like rule evaluation) for no real benefit.
+    resources:
+      requests: { cpu: 100m, memory: 400Mi }
+      limits:   { memory: 1Gi }
+    # No storageSpec → emptyDir. Data is lost on restart, which is fine for a demo and avoids EBS cost.
+
+alertmanager:
+  alertmanagerSpec:
+    # Alertmanager is tiny; small requests leave room on 2 small nodes for everything else.
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits:   { memory: 128Mi }
+
+grafana:
+  # No disk for Grafana. Our dashboard is loaded from a ConfigMap on every start, so nothing is lost,
+  # and we avoid an EBS volume (which would cost money and need the EBS CSI driver).
+  persistence: { enabled: false }
+  sidecar:
+    dashboards:
+      # A small helper container that watches for ConfigMaps labelled grafana_dashboard: "1"
+      # and loads them into Grafana automatically (see grafana-dashboard.yaml).
+      enabled: true
+      searchNamespace: ALL                # loads our dashboard ConfigMap
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    # 1Gi, not 256Mi: the Grafana 13 image shipped with chart 93.x uses ~700Mi right after startup
+    # (measured on kind). With 256Mi the container was OOM-killed in a loop and Grafana never came up.
+    limits:   { memory: 1Gi }
+  # No admin password here on purpose: the chart generates one and stores it in the Secret
+  # "monitoring-grafana". monitoring/README.md shows how to read it.

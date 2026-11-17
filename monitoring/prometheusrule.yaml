@@ -1,0 +1,68 @@
+# prometheusrule.yaml: alert rules for hello-app.
+#
+# PrometheusRule is a custom resource from the Prometheus Operator. Prometheus evaluates each "expr"
+# (written in PromQL) every 30 s or so. If the expression returns a result continuously for the "for" duration,
+# the alert FIRES and is sent to Alertmanager, which forwards it to Slack.
+#
+# We alert on SYMPTOMS users would notice (app down, errors, slowness, crash loops), not on causes like
+# "CPU is 80%". That way a human is woken up only when users are actually affected.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hello-app-alerts
+  namespace: monitoring
+  labels:
+    app: hello-app
+spec:
+  groups:
+    - name: hello-app
+      rules:
+        # "up" is 1 when Prometheus could scrape a target and 0 when it couldn't.
+        # The sum is 0 if every pod is failing; absent() covers the case where no target exists at all
+        # (e.g. the Deployment was deleted or scaled to 0), when "up" has no series to sum.
+        - alert: HelloAppDown
+          expr: sum(up{namespace="app", service="hello-app"}) == 0 or absent(up{namespace="app", service="hello-app"})
+          # Wait 1 min so a single missed scrape doesn't page anyone.
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: No hello-app pod is being scraped
+            description: Prometheus has not been able to scrape any hello-app pod in namespace "app" for over 1 minute. The app is probably down.
+
+        # Share of requests that returned 5xx over the last 2 minutes. rate() turns the ever-growing counter
+        # into "per second", and dividing errors by all requests gives a ratio (0.05 = 5%).
+        - alert: HelloAppHighErrorRate
+          expr: sum(rate(http_requests_total{namespace="app", status_code=~"5.."}[2m])) / sum(rate(http_requests_total{namespace="app"}[2m])) > 0.05
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: More than 5% of requests are failing
+            # $value is the expression's result (a ratio); humanizePercentage shows 0.3 as "30%".
+            description: '{{ $value | humanizePercentage }} of hello-app requests returned a 5xx error over the last 2 minutes.'
+
+        # 95% of requests are faster than this value. The histogram's "le" (less-or-equal) buckets
+        # are combined across all pods, then histogram_quantile estimates the 95th percentile.
+        - alert: HelloAppHighLatencyP95
+          expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{namespace="app"}[5m]))) > 0.5
+          # Latency is noisier than errors, so it must stay high for 5 min before alerting. It's a "warning":
+          # slow is bad, but not as urgent as broken.
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: p95 latency above 500 ms
+            description: 'The 95th percentile response time of hello-app is {{ $value | humanizeDuration }} (threshold 500 ms).'
+
+        # kube-state-metrics counts container restarts. More than 2 in 10 min means a crash loop,
+        # e.g. the Demo 3 broken release, or a liveness probe that keeps failing.
+        - alert: HelloAppPodRestarting
+          expr: increase(kube_pod_container_status_restarts_total{namespace="app"}[10m]) > 2
+          # Fire immediately: the 10-minute window above already smooths things out.
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: A hello-app container restarted more than twice in 10 min
+            description: 'Container {{ $labels.container }} in pod {{ $labels.pod }} restarted {{ $value | printf "%.0f" }} times in the last 10 minutes. Check: kubectl -n app logs {{ $labels.pod }} --previous'

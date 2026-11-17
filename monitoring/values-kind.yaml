@@ -1,0 +1,8 @@
+# values-kind.yaml: small overrides needed only on the local kind cluster.
+# Pass it AFTER values.yaml (later -f files win). Do NOT use it on EKS.
+
+# Docker Desktop's VM doesn't support the shared root mount node-exporter wants.
+# (node-exporter mounts the host's "/" to report disk usage; on kind that makes the pod fail to start.)
+prometheus-node-exporter:
+  hostRootFsMount:
+    enabled: false
