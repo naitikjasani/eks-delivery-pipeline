@@ -1,0 +1,8 @@
+# backend.hcl.example: TEMPLATE for the S3 backend settings.
+#   cp backend.hcl.example backend.hcl      (backend.hcl is gitignored)
+#   terraform init -backend-config=backend.hcl
+bucket       = "eks-pipeline-tfstate-<ACCOUNT_ID>" # from: terraform -chdir=infra/bootstrap output state_bucket_name
+key          = "dev/terraform.tfstate"             # path of the state file inside the bucket
+region       = "ap-south-1"
+use_lockfile = true # S3-native state locking (Terraform >= 1.10)
+encrypt      = true # encrypt the state file at rest

@@ -1,0 +1,6 @@
+# terraform.tfvars.example: TEMPLATE for your real values.
+#   cp terraform.tfvars.example terraform.tfvars     (terraform.tfvars is gitignored)
+owner               = "your-name"
+kubernetes_version  = "1.XX"              # newest STANDARD_SUPPORT version, see docs/RUNBOOK.md
+public_access_cidrs = ["203.0.113.10/32"] # your public IP: curl -s https://checkip.amazonaws.com
+# capacity_type     = "ON_DEMAND"            # only if Spot capacity is unavailable
