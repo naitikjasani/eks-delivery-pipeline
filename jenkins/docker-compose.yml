@@ -1,0 +1,21 @@
+# docker-compose.yml: runs our Jenkins image on the Mac.
+#   Start:  cd jenkins && docker compose up -d --build
+#   Stop:   docker compose down        (add -v to also delete all Jenkins data)
+services:
+  jenkins:
+    # Build the image from ./Dockerfile (Jenkins + docker CLI + aws CLI + kubectl).
+    build: .
+    # A fixed name, so commands like `docker exec jenkins ...` in the RUNBOOK work.
+    container_name: jenkins
+    # Root, so Jenkins may use the mounted Docker socket (see the comment at the end of the Dockerfile).
+    user: root
+    ports:
+      - "8080:8080"                 # Jenkins UI → http://localhost:8080
+    volumes:
+      - jenkins_home:/var/jenkins_home          # jobs, credentials, history survive restarts
+      - /var/run/docker.sock:/var/run/docker.sock   # lets Jenkins run `docker build` using the Mac's Docker
+    # Start again automatically after a crash or a Docker Desktop restart, unless you stopped it yourself.
+    restart: unless-stopped
+# A named volume managed by Docker. It persists until `docker compose down -v`.
+volumes:
+  jenkins_home:
