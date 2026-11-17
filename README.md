@@ -130,11 +130,13 @@ terraform -chdir=infra/envs/dev destroy
 
 | Component | Version |
 |---|---|
-| Terraform | ≥ 1.10 |
-| AWS provider | ~> 6.0 |
-| Kubernetes (EKS) | _set at build time: newest standard-support version_ |
-| kube-prometheus-stack | _set at build time; see `monitoring/README.md`_ |
-| Node.js | 24 LTS |
+| Terraform | ≥ 1.10 (built and validated with 1.17.2) |
+| AWS provider | ~> 6.0 (locked to 6.73.0 in `.terraform.lock.hcl`) |
+| Kubernetes (EKS) | 1.37: newest standard-support version in November 2026 (standard support until Dec 1, 2027). Re-check with `aws eks describe-cluster-versions` before `apply` |
+| kube-prometheus-stack | 93.3.0 (see [`monitoring/README.md`](monitoring/README.md)) |
+| Node.js | 24 LTS (`node:24-alpine`) |
+| Express / prom-client | 5.x / 15.x |
+| Jenkins | `jenkins/jenkins:lts-jdk21` |
 
 ## Learn more
 - [docs/BEGINNER_GUIDE.md](docs/BEGINNER_GUIDE.md): every tool and concept in plain words

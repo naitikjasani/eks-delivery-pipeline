@@ -124,9 +124,11 @@ Run `./scripts/traffic.sh errors` → after ~2–3 minutes a Slack message appea
 1. In `app/src/server.js`, uncomment the `DEMO 3` block.
 2. `./scripts/kind-deploy.sh` → `kubectl -n app get pods -w` → new pods go `CrashLoopBackOff`,
    **old pods keep running** (that's `maxUnavailable: 0` protecting you).
+   The script waits 120 s for the rollout and then exits with an error. That's expected here.
 3. `kubectl -n app logs <crashing-pod>` → you see `DATABASE_URL is required`.
 4. `kubectl -n app rollout undo deploy/hello-app` → back to healthy.
-5. Re-comment the block.
+5. Re-comment the block and run `./scripts/kind-deploy.sh` again. On kind every build is tagged `hello-app:local`,
+   so until you rebuild, the node's copy of that tag is still the broken image.
 
 ### B5. Local Jenkins (no AWS yet)
 ```bash
