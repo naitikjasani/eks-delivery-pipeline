@@ -61,7 +61,7 @@ That's where the owner practices; the paid EKS cluster runs for only ~3 hours in
 **Non-goals** (do NOT build these)
 - No custom domain, HTTPS, Ingress controller or load balancer.
 - No Helm chart for the app (plain YAML is easier to learn).
-- No GitHub Actions workflow (Jenkins is the CI/CD tool here).
+- No GitHub Actions *deploy* workflow (Jenkins is the CI/CD tool here). A checks-only workflow (tests, lint, `terraform validate`; no credentials, never deploys) is allowed.
 - No databases, no persistent volumes.
 - No multiple environments (only `dev`).
 

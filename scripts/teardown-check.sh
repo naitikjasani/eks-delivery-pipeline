@@ -34,7 +34,8 @@ check() {
   out="$(echo "$out" | tr '\t' '\n' | grep -v -x -e 'None' -e '' || true)"
   if [ -n "$out" ]; then
     printf '  %-46s ⚠ FOUND:\n' "$label"
-    echo "$out" | sed 's/^/      - /'
+    # Print each resource on its own indented line.
+    while IFS= read -r line; do echo "      - $line"; done <<< "$out"
     FOUND=1
   else
     printf '  %-46s ok (none)\n' "$label"

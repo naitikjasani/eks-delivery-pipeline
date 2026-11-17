@@ -1,0 +1,107 @@
+# checks.yml: automatic quality checks on every push and pull request.
+#
+# Why GitHub Actions when the project uses Jenkins? They do different jobs:
+#   - Jenkins (Jenkinsfile) is the real CI/CD pipeline: it builds images, pushes them to ECR and deploys to EKS.
+#     It runs on a laptop, so its results aren't publicly visible.
+#   - This workflow is a public, checks-only gate: it proves on every push that the code is tested, linted and
+#     valid. It NEVER deploys, has no AWS credentials, and can't change anything outside this run.
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege for the workflow's own token: it only needs to read the repository.
+permissions:
+  contents: read
+
+# If you push twice quickly, cancel the older run instead of wasting minutes on it.
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: App tests (Node + Docker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          # Cache npm downloads between runs, keyed on package-lock.json.
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: npm ci && npm test
+        working-directory: app
+        run: npm ci && npm test
+      # The same command Jenkins runs in its Test stage: the tests also pass inside the container.
+      - name: docker build --target test
+        run: docker build --target test -t hello-app:test app
+
+  terraform:
+    name: Terraform fmt + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "~1.10"
+      - name: terraform fmt -check
+        run: terraform fmt -check -recursive infra
+      # -backend=false: download providers and check the code without touching any S3 state or AWS account.
+      - name: validate bootstrap
+        run: terraform -chdir=infra/bootstrap init -backend=false -input=false && terraform -chdir=infra/bootstrap validate
+      - name: validate envs/dev
+        run: terraform -chdir=infra/envs/dev init -backend=false -input=false && terraform -chdir=infra/envs/dev validate
+      # Cost guard (PROJECT.md §3): fail if anyone adds a resource that costs money every hour.
+      - name: forbidden-resource check
+        run: |
+          if grep -rnE 'aws_nat_gateway|aws_lb|aws_alb|aws_elb|aws_cloudwatch_log_group|aws_kms_key|aws_instance|aws_eip|aws_eks_fargate_profile|aws_db_|terraform-aws-modules' infra --include='*.tf'; then
+            echo "::error::Forbidden (billable) resource found in infra/"
+            exit 1
+          fi
+          echo "clean"
+
+  lint:
+    name: Lint (shell, Dockerfiles, Kubernetes)
+    runs-on: ubuntu-latest
+    env:
+      HADOLINT_VERSION: v2.15.1
+      KUBECONFORM_VERSION: v0.8.0
+    steps:
+      - uses: actions/checkout@v7
+      # shellcheck comes preinstalled on GitHub's Ubuntu runners.
+      - name: shellcheck
+        run: shellcheck scripts/*.sh
+      - name: hadolint
+        run: |
+          curl -fsSL -o hadolint "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/hadolint-linux-x86_64"
+          chmod +x hadolint
+          ./hadolint app/Dockerfile jenkins/Dockerfile
+      # kubeconform checks manifests against the official Kubernetes schemas (and the Prometheus Operator CRD
+      # schemas from the community CRDs catalog), without needing a cluster.
+      - name: kubeconform
+        run: |
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar xz kubeconform
+          ./kubeconform -strict -summary -kubernetes-version 1.37.0 k8s/
+          ./kubeconform -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            monitoring/servicemonitor.yaml monitoring/prometheusrule.yaml monitoring/grafana-dashboard.yaml
+
+  secrets:
+    name: No secrets committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Fail on anything that looks like an AWS access key or a real Slack webhook. The only allowed match is the
+      # REPLACE/ME/PLEASE placeholder in the example file (and the spec that documents it).
+      - name: secret patterns
+        run: |
+          if git grep -nE 'AKIA[0-9A-Z]{16}|hooks\.slack\.com/services/T[0-9A-Z]+/'; then
+            echo "::error::Possible secret committed"
+            exit 1
+          fi
+          echo "clean"

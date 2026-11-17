@@ -1,0 +1,4 @@
+# .hadolint.yaml: settings for hadolint, the Dockerfile linter (run by make lint and GitHub Actions).
+# Fail only on warnings and errors. "info" findings such as DL3066 ("USER node is non-numeric") are fine here:
+# the Deployment sets runAsUser: 1000 explicitly, so Kubernetes can still verify the container isn't root.
+failure-threshold: warning

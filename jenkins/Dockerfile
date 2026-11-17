@@ -11,6 +11,9 @@ USER root
 
 # Basic tools: curl downloads the other tools, unzip unpacks the AWS CLI, git checks out our repo,
 # ca-certificates/gnupg verify that downloads really come from Docker. Deleting the apt lists afterwards keeps the image smaller.
+# Versions aren't pinned on purpose: Debian removes old package versions from its mirrors, so pinned versions would
+# break the build within weeks. The base image tag (lts-jdk21) already fixes the Debian release.
+# hadolint ignore=DL3008
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl gnupg unzip git \
  && rm -rf /var/lib/apt/lists/*
@@ -19,6 +22,8 @@ RUN apt-get update \
 # the client talks to the Mac's Docker through the mounted /var/run/docker.sock (see docker-compose.yml),
 # so images built here appear in your normal Docker Desktop.
 # `dpkg --print-architecture` prints arm64 on Apple Silicon and amd64 on Intel, so the right packages are chosen.
+# (Same reason as above for not pinning versions.)
+# hadolint ignore=DL3008
 RUN install -m 0755 -d /etc/apt/keyrings \
  && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
  && chmod a+r /etc/apt/keyrings/docker.asc \
@@ -51,4 +56,5 @@ RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
 # We deliberately stay root, so the container can use the host's Docker socket without matching group IDs
 # between the Mac and the container. This is acceptable ONLY because this Jenkins runs locally on a laptop
 # and is never exposed to the internet. Never run a shared or public Jenkins as root.
+# hadolint ignore=DL3002
 USER root
